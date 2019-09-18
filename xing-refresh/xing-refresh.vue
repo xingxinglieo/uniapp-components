@@ -80,7 +80,8 @@ export default {
 			top: 0,
 			status: 0,
 			count: 0.01,
-			scrollCount: 0.01
+			scrollCount: 0.01,
+			fingers:0,
 		};
 	},
 	changePositon(){
@@ -94,20 +95,20 @@ export default {
 		change(e) {
 			//为3即是正在回弹状态
 			if (this.status == 3 || !this.isTouch) return;
-			if (e.detail.y >= this.diff) {
+			
+			if (e.detail.y >= this.diff || this.fingers > 1) {
 				this.status = 2;
 			} else if (e.detail.y < this.diff) {
 				this.status = 1;
 			}
 		},
 		touchstart(e) {
-			if (this.status == 3) {
-				return;
-			}
+			this.fingers++;
 			this.isTouch = true;
 		},
 		touchend(e) {
-			if (this.status == 3) return;
+			this.fingers--;
+			if (this.status == 3 || this.fingers!=0) return;//防止多指下滑问题 , 匹配手指 只用到最后一次touchend;栈的思想
 			this.isTouch = false;
 			if (this.scrollmark) {
 				if (this.status == 2) {
@@ -118,6 +119,7 @@ export default {
 						setTimeout(() => {
 							this.$emit('finished');
 							this.status = 0; //回弹过程中
+							this.y = -this.topHeight; //结束之后，再次设置y坐标
 						}, 200);
 					});
 				} else if (this.status == 1) {
