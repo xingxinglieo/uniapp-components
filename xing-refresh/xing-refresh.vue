@@ -81,7 +81,8 @@ export default {
 			status: 0,
 			count: 0.01,
 			scrollCount: 0.01,
-			fingers:0,
+			fingers:0,//记录手指数
+			clearFingers:null,//清除手指定时器
 		};
 	},
 	changePositon(){
@@ -107,6 +108,11 @@ export default {
 			this.isTouch = true;
 		},
 		touchend(e) {
+			clearTimeout(this.clearFingers);
+			this.clearFingers = setTimeout(()=>{
+				this.fingers = 0;
+				//重置手指数防止bug;
+			},200);
 			this.fingers--;
 			if (this.status == 3 || this.fingers!=0) return;//防止多指下滑问题 , 匹配手指 只用到最后一次touchend;栈的思想
 			this.isTouch = false;
