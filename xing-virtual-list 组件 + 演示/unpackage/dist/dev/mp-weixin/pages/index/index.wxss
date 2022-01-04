@@ -1,0 +1,9 @@
+
+.title {
+	height: 40px;
+	line-height: 40px;
+	font-size: 32px;
+	color: #8f8f94;
+	font-weight: bolder;
+}
+

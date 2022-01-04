@@ -1,0 +1,1 @@
+<view data-event-opts="{{[['tap',[['onClick',['$0'],['index']]]]]}}" style="border-bottom:thick solid #555555;" bindtap="__e">{{''+item+''}}</view>

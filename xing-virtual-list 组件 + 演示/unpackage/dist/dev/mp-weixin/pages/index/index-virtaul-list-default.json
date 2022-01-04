@@ -1,0 +1,7 @@
+{
+  "component": true,
+  "usingComponents": {
+    "index-virtaul-list-default": "/pages/index/index-virtaul-list-default",
+    "virtaul-list": "/components/xing-virtaul-list/virtaul-list"
+  }
+}
