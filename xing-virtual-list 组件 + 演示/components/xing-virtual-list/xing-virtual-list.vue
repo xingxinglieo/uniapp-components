@@ -1,8 +1,9 @@
 <template>
+	<!-- class:query 挂载后会查询高度(px) -->
 	<scroll-view
-		id="cycle-list"
+		id="list"
 		:style="style"
-		:class="customClass"
+		:class="'query ' + customClass"
 		scroll-y="true"
 		:lower-threshold="lowerThreshold"
 		:upper-threshold="upperThreshold"
@@ -26,29 +27,40 @@
 		@refresherrestore="refresherrestore"
 		@refresherabort="refresherabort"
 	>
+		<view id="header" class="query"><slot name="header" :query="query" /></view>
+		<!-- 撑起高度 dom -->
 		<!-- @animationstart dom 挂载的 hack 技巧  -->
 		<view
 			class="animation-fade-1"
-			@animationstart="queryScrollHeight"
+			@animationstart="queryDomsHeight"
 			:style="'height:' + scrollHeight + 'px;'"
 		></view>
+		<!-- 移动口 -->
 		<view class="list" :style="'transform: translateY(' + scrollTopPosition + 'px);'">
-			<view v-for="(item, index) in visibleItems" :key="getKey(actualStart, index)">
-				<slot :item="item" :index="visibleItemsIndex[index]"></slot>
+			<view
+				v-for="(item, index) in actualItems"
+				:key="getKey(item, visibleItemsIndex[index])"
+				:class="visibleItemsIndex[index] === undefined ? 'measure' : ''"
+			>
+				<slot
+					:item="item"
+					:index="visibleItemsIndex[index]"
+					:actualIndex="index"
+					:query="query"
+				/>
 			</view>
-		</view>
-		<view class="list" style="transform: translateY(0px);">
-			<view v-for="(item, index) in measureItems" :key="index" class="measure">
-				<slot :item="item" :index="index"></slot>
-			</view>
+			<!-- footer 在移动口内 -->
+			<view id="footer" class="query"><slot name="footer" :query="query" /></view>
 		</view>
 	</scroll-view>
 </template>
 
 <script>
 import PrefixSumManage from './PrefixSumManage';
+import defaultMixin from './scrollViewDefaultMixin';
 import { throttle } from './utils';
 export default {
+	mixins: [defaultMixin],
 	props: {
 		dataSources: {
 			// 数据源 还需要在 mouted 生命周期
@@ -61,23 +73,29 @@ export default {
 			default: (_item, index) => index
 		},
 		height: {
-			type: [Number, String], // 视口高,
+			// 视口高
+			type: [Number, String],
 			required: true
 		},
 		preRender: {
 			// 预渲染数
 			type: [Number, Array],
-			default: 5
+			default: 10
 		},
 		calculteMax: {
 			// 计算高度最大值，用于分片
 			type: Number,
-			default: 100
+			default: 20
 		},
 		throttle: {
 			//节流间隔
 			type: [Boolean, Number],
 			default: false
+		},
+		query: {
+			// 父级作用域兜底方案
+			type: Object,
+			default: () => ({})
 		},
 		customStyle: {
 			type: String,
@@ -86,108 +104,78 @@ export default {
 		customClass: {
 			type: String,
 			default: ''
-		},
-		lowerThreshold: {
-			type: [Number, String],
-			default: 50
-		},
-		upperThreshold: {
-			type: [Number, String],
-			default: 50
-		},
-		scrollTop: [Number, String],
-		scrollIntoView: String,
-		scrollWithAnimation: {
-			type: Boolean,
-			default: false
-		},
-		enableBackToTop: {
-			type: Boolean,
-			default: false
-		},
-		refresherEnabled: {
-			type: Boolean,
-			default: false
-		},
-		refresherThreshold: {
-			type: Number,
-			default: 45
-		},
-		refresherDefaultStyle: {
-			type: String,
-			default: 'black'
-		},
-		refresherBackground: {
-			type: String,
-			default: '#FFF'
-		},
-		refresherTriggered: {
-			type: Boolean,
-			default: false
-		},
-		enableFlex: {
-			type: Boolean,
-			default: false
-		},
-		scrollAnchoring: {
-			type: Boolean,
-			default: false
 		}
 	},
 	data() {
 		return {
 			start: 0,
 			end: 0, // 截取 [start,end]
-			lastScrollTop: 0, // 上次滚动的位置
-			prefixSum: [],
-			measureItems: [],
-			scrollDomHeight: 0
+			lastScrollTop: 0, // 记录最后滚动的位置，用于无滚动时重新计算位置
+			prefixSum: [], // 前缀和数组
+			measureItems: [], // 测量的项，会被渲染到屏幕上然后通过 api 测量高度
+			scrollDomHeight: 0, // 测量视口高(px)
+			headerDomHeight: 0, // 测量 header 高
+			footerDomHeight: 0 // 测量 footer 高
 		};
 	},
 	computed: {
-		/* props 处理 */
+		/* props 处理 start*/
 		calcHeight() {
 			return Number.isNaN(+this.height) ? this.height : this.height + 'px';
 		},
 		style() {
-			return `${this.customStyle};height: ${this.calcHeight};position: relative !important;`;
+			// relative 优先级高
+			return `${this.customStyle};height: ${
+				this.calcHeight
+			};position: relative !important;`;
 		},
 		scrollHeight() {
-			return Math.max(
-				this.scrollDomHeight + this.lowerThreshold,
-				this.prefixSum[this.prefixSum.length - 1]
-			);
+			// 前缀和最后一项即为总高度
+			return this.prefixSum[this.prefixSum.length - 1];
 		},
 		getKey() {
-			return typeof this.dataKey === 'string' // 小程序模板中无法写表达式所以需要方法
+			// 小程序模板中无法写表达式所以需要方法
+			return typeof this.dataKey === 'string'
 				? item => item[this.dataKey]
 				: typeof this.dataKey === 'function'
 				? this.dataKey
 				: (_item, index) => index;
 		},
 		preRenderNums() {
+			// 5 等效于 [5,5]
 			const preRender = this.preRender;
 			return typeof preRender === 'number' ? [preRender, preRender] : preRender;
 		},
+		/* props 处理 end*/
 
-		/* start end items 处理 */
+		/* 渲染相关 items,prefixSun 处理 start */
 		actualStart() {
+			// 实际渲染的项 start，会加上 preRender
 			const start = this.start - this.preRenderNums[0];
 			return start < 0 ? 0 : start;
 		},
 		actualEnd() {
+			// 实际渲染的end，会加上 preRender
 			const end = this.end + this.preRenderNums[1];
 			return end >= this.dataSources.length ? this.dataSources.length - 1 : end;
 		},
 		visibleItems() {
-			return this.dataSources.slice(this.actualStart, this.actualEnd + 1); // [actualStart, actualEnd] 所以 end + 1
+			// [actualStart, actualEnd] 所以 end + 1
+			return this.dataSources.slice(this.actualStart, this.actualEnd + 1);
+		},
+		actualItems() {
+			// 渲染到屏幕上的项会加上 measureItems
+			return [...this.visibleItems, ...this.measureItems];
 		},
 		visibleItemsIndex() {
+			// index 为在原数组中的 index，measureitem 的 index 将为 undefined
 			return this.visibleItems.map((_, i) => this.actualStart + i);
 		},
 		scrollTopPosition() {
-			return this.prefixSum[this.actualStart - 1];
+			// 移动口
+			return this.headerDomHeight + this.prefixSum[this.actualStart - 1];
 		}
+		/* 渲染相关 items,prefixSun 处理 end*/
 	},
 	created() {
 		this.$on('shouldCalculate', this.measureDoms);
@@ -211,9 +199,13 @@ export default {
 		},
 
 		/* 测量 */
+		/**
+		 * 在调用修改源数组方法后,触发 PrefixSumManage,
+		 * 触发 shouldCalculate 事件调用此函数 测量新增项高度
+		 **/
 		async measureDoms({ items, feedback }) {
-			this.measureItems.push(...items);
-			await this.$nextTick();
+			this.measureItems = items;
+			await this.$nextTick(); // nextTick 后 dom 改变
 			const query = uni
 				.createSelectorQuery()
 				.in(this)
@@ -225,12 +217,19 @@ export default {
 				})
 				.exec();
 		},
-		queryScrollHeight(e) {
-			const query = uni
-				.createSelectorQuery()
-				.in(this)
-				.select('#cycle-list');
-			query.boundingClientRect(dom => (this.scrollDomHeight = dom.height)).exec();
+		async queryDomsHeight() {
+			await this.$nextTick();
+			const query = uni.createSelectorQuery().in(this);
+			query
+				.selectAll('.query')
+				.boundingClientRect(doms => {
+					doms.forEach(dom => {
+						if (dom.id === 'list') this.scrollDomHeight = dom.height;
+						else if (dom.id === 'header') this.headerDomHeight = dom.height;
+						else if (dom.id === 'footer') this.footerDomHeight = dom.height;
+					});
+				})
+				.exec();
 		},
 
 		/* 计算位置 */
@@ -239,46 +238,26 @@ export default {
 		},
 		_calculateRenderPostion(scrollTop, index) {
 			if (index === undefined) index = this.start;
-			this.start = this.prefixSumManage.search(scrollTop, index);
+			const virtualScrollTop = Math.max(scrollTop - this.headerDomHeight, 0);
+			this.start = this.prefixSumManage.search(virtualScrollTop, index);
 			this.end = this.prefixSumManage.search(
-				scrollTop + this.scrollDomHeight,
+				virtualScrollTop + this.scrollDomHeight,
 				this.start
 			);
-			this.lastScrollTop = scrollTop;
+			this.lastScrollTop = scrollTop; // 记录最后滚动的位置，用于无滚动时重新计算位置
 		},
 
 		/* 事件 */
-		scrolltoupper(ev) {
-			this.$emit('scrolltoupper', ev);
-		},
-		scrolltolower(ev) {
-			this.$emit('scrolltolower', ev);
-		},
 		scroll(ev) {
 			const scrollTop = ev.detail.scrollTop;
 			this.calculateRenderPostion(scrollTop);
 			this.$emit('scroll', ev);
 		},
-		click(ev){
-			this.$emit('click', ev);
-		},
-		refresherpulling(ev) {
-			this.$emit('refresherpulling', ev);
-		},
-		refresherrefresh(ev) {
-			this.$emit('refresherrefresh', ev);
-		},
-		refresherrestore(ev) {
-			this.$emit('refresherrestore', ev);
-		},
-		refresherabort(ev) {
-			this.$emit('refresherabort', ev);
-		},
+		// 删除 item 导致的触底
 		deletetolower() {
-			// 删除 item 导致的 index 触底
 			if (
-				// type === 'delete' &&
-				this.prefixSum[this.prefixSum.length - 1] < this.scrollDomHeight
+				this.prefixSum[this.prefixSum.length - 1] + this.footerDomHeight <
+				this.scrollDomHeight
 			) {
 				this.$emit('deletetolower');
 			}
@@ -299,7 +278,7 @@ export default {
 			immediate: true
 		},
 		height() {
-			this.$nextTick(this.queryScrollHeight);
+			this.$nextTick(this.queryDomsHeight);
 		},
 		scrollDomHeight() {
 			this.reCalculatePostion();
@@ -307,12 +286,6 @@ export default {
 		calculteMax() {
 			this.prefixSumManage.calculteMax = this.calculteMax;
 		}
-		// prefixSum(){
-		// 	console.log(this.prefixSum)
-		// },
-		// dataSources() {
-		// 	this.prefixSumManage.initOrigin(this.dataSources); // dataSources 引用改变即重置
-		// },
 	}
 };
 </script>

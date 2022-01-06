@@ -1,4 +1,3 @@
-import { wait } from "./utils"
 export default class MicTaskQueue{
   constructor(){
     this.tasks = [] // 增删任务队列
@@ -13,8 +12,7 @@ export default class MicTaskQueue{
     this.isExecuting = true
     while (this.tasks.length) {
       const task = this.tasks.shift()
-      await task()
-      await wait()
+      await task.call(this)
     }
     this.isExecuting = false
   }

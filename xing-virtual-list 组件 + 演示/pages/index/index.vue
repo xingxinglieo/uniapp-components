@@ -11,7 +11,7 @@
 			ref="list"
 			height="calc(100vh - 200px)"
 			:dataSources="article"
-			:calculteMax="5"
+			:calculteMax="20"
 			:scroll-top="scrollTop"
 			@scrolltolower="push"
 			@deletetolower="push"
@@ -30,7 +30,7 @@
 </template>
 
 <script>
-import virtaulList from '../../components/xing-virtaul-list/virtaul-list.vue';
+import virtaulList from '../../components/xing-virtual-list/xing-virtual-list.vue';
 export default {
 	components: {
 		virtaulList
